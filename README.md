@@ -7,8 +7,8 @@ moving-average crossover strategies on 21 years of EURUSD (7.4 million one-minut
 
 **At a glance**
 
-- **Correctness.** 42 GoogleTest cases, including a portfolio worked out by hand. A mutation check plants 22
-  realistic bugs (look-ahead, wrong cost sign, missed fee, off-by-one warm-up...) and the tests catch all 22.
+- **Correctness.** 46 GoogleTest cases, including a portfolio worked out by hand. A mutation check plants 24
+  realistic bugs (look-ahead, wrong cost sign, missed fee, off-by-one warm-up...) and the tests catch all 24.
   On real data the engine agrees with an independent NumPy implementation on all 235,699 equity points and
   3,041 fills (largest difference: $0.0000000034). Clean under AddressSanitizer and UndefinedBehaviorSanitizer.
 - **Speed.** A full backtest over 7,445,272 one-minute bars runs in 0.25 s (30 million bars a second), 50x
@@ -47,7 +47,11 @@ public:
 };
 ```
 
-Strategies only state intent. They never touch cash or prices, so execution rules live in one place.
+Strategies only state intent. They never touch cash or prices, so execution rules live in one place. That also
+lets research code in another language use the engine: `bt_run --strategy file --targets FILE` replays a CSV
+of `timestamp,target` rows written by, say, a Python model. Each row is matched to its bar by timestamp, bars
+without a row are flat, the trade still happens at the next open with the usual costs, and a file whose
+timestamps do not exist in the data is rejected rather than half-applied.
 
 ### Conventions
 
@@ -78,11 +82,11 @@ drawdown. The stop-out and the two metric views were added in response, with tes
 
 ## Verification
 
-**Unit tests** (`tests/`, 42 cases): timestamp parsing including leap years; every CSV rejection rule; cash,
+**Unit tests** (`tests/`, 46 cases): timestamp parsing including leap years; every CSV rejection rule; cash,
 position, average price and realised P&L through adds, partial closes, flips and shorts; the equity identity
 over 2,000 random fills; both price bases; fills at the next open; no trade before the long window is full; the
-warm-up window; the stop-out; monotone cost sensitivity; drawdown, CAGR, Sharpe and exposure on paths small
-enough to check by hand.
+warm-up window; the stop-out; monotone cost sensitivity; target files matched by timestamp; drawdown, CAGR,
+Sharpe and exposure on paths small enough to check by hand.
 
 The engine test `MatchesAHandCalculatedPortfolio` works through five bars with a 2-pip spread and commission:
 
@@ -99,8 +103,8 @@ wrong. The script copies the engine, plants one bug at a time and rebuilds: deci
 close, filling at the next close, trading the whole target instead of the change, sells skipping the spread,
 fees never leaving cash, an unweighted average price, short P&L with the wrong sign, a warm-up one bar early or
 late, a strategy allowed to read one bar ahead, duplicate timestamps accepted, a line split across read chunks,
-the stop-out never firing or trading resuming after it, drawdown measured from the starting cash, 365-day years
-and more. **22 of 22 are caught.**
+the stop-out never firing or trading resuming after it, target files replayed by row instead of timestamp,
+drawdown measured from the starting cash, 365-day years and more. **24 of 24 are caught.**
 
 **Independent cross-check** (`python/reference_vectorised.py`, `python/tests/`). A second implementation shares no
 code or algorithm with the engine: moving averages are summed window by window instead of with running sums,
@@ -236,7 +240,7 @@ MSVC should build it too. GoogleTest is downloaded at configure time (`-DBT_BUIL
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-build/bt_tests                               # 42 tests (or: ctest --test-dir build -C Release)
+build/bt_tests                               # 46 tests (or: ctest --test-dir build -C Release)
 ```
 
 CLion and Visual Studio open the folder directly as a CMake project. Build the Release configuration before
@@ -252,7 +256,7 @@ python python/prepare_data.py --histdata path/to/folder/with/DAT_ASCII_EURUSD_M1
 python -m pytest python/tests                # cross-checks against the engine (13 tests)
 python python/run_experiments.py             # experiments A-D -> results/experiments.json
 python python/make_figures.py                # results/figures/*.png
-python tools/mutation_check.py               # plants 22 bugs, expects every one to be caught
+python tools/mutation_check.py               # plants 24 bugs, expects every one to be caught
 ```
 
 One backtest from the command line (prints metrics as JSON; `--out` also writes equity, fills and metrics):
@@ -261,6 +265,7 @@ One backtest from the command line (prints metrics as JSON; `--out` also writes 
 build/bt_run --data data/eurusd_1h.csv --strategy ma --short 20 --long 50 --units 100000 \
   --basis bid --spread 0.00005 --commission-per-unit 0.000035 \
   --start 2015-01-01 --end 2020-01-01 --out results/run
+build/bt_run --data data/eurusd_1h.csv --strategy file --targets my_model_targets.csv --basis bid --spread 0.00005
 build/bt_bench --data data/eurusd_1m.csv --repeat 5
 ```
 

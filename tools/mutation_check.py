@@ -71,6 +71,11 @@ MUTANTS = [
     ("drawdown measured from starting cash, not the running peak", "src/metrics.cpp", [
         ("        peak = std::max(peak, e);\n", "")]),
     ("365-day years", "src/metrics.cpp", [("365.25 * 86400.0", "365.0 * 86400.0")]),
+    ("target file replayed by row order instead of timestamp", "src/strategies.cpp", [
+        ("if (next_ < targets_.size() && targets_[next_].timestamp == now) return targets_[next_++].target;",
+         "if (next_ < targets_.size()) return targets_[next_++].target;")]),
+    ("target file timestamps not checked against the bars", "src/strategies.cpp", [
+        ("if (b == bars.size() || bars[b].timestamp != t.timestamp)", "if (b == bars.size())")]),
     ("capital drawdown measured from starting cash, not the running peak", "src/metrics.cpp", [
         ("(e - peak) / r.initial_cash", "(e - r.initial_cash) / r.initial_cash")]),
     ("ruined accounts still get compounding metrics", "src/metrics.cpp", [

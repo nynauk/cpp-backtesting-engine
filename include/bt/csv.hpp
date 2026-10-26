@@ -29,4 +29,9 @@ std::string validate_bar(const Bar& bar);
 std::vector<Bar> parse_bars_csv(std::istream& in, const std::string& source_name = "<stream>");
 std::vector<Bar> load_bars_csv(const std::string& path);
 
+// Target positions from another program: a header with `timestamp` and `target` (any order, extra columns
+// ignored), timestamps strictly increasing, targets finite. Same timestamp formats and error style as bars.
+std::vector<TimedTarget> parse_targets_csv(std::istream& in, const std::string& source_name = "<stream>");
+std::vector<TimedTarget> load_targets_csv(const std::string& path);
+
 }  // namespace bt

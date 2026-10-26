@@ -2,6 +2,7 @@
 //
 //   bt_run --data eurusd_1h.csv --strategy ma --short 20 --long 50 --units 100000 \
 //          --basis bid --spread 0.0001 --commission-per-unit 0.000035 --start 2015-01-01 --end 2020-01-01 --out results/run
+//   bt_run --data eurusd_1h.csv --strategy file --targets model_targets.csv ...   (positions from another program)
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -20,7 +21,7 @@
 namespace {
 
 void usage() {
-    std::cerr << "usage: bt_run --data FILE [--strategy ma|buyhold|none] [--short N] [--long N] [--units U]\n"
+    std::cerr << "usage: bt_run --data FILE [--strategy ma|buyhold|none|file] [--targets FILE] [--short N] [--long N] [--units U]\n"
                  "              [--cash C] [--basis mid|bid] [--spread S] [--slippage S]\n"
                  "              [--commission-per-unit X] [--commission-rate X] [--start DATE] [--end DATE]\n"
                  "              [--stop-out EQUITY|none] [--out DIR]\n";
@@ -68,15 +69,24 @@ int main(int argc, char** argv) {
         cfg.stop_out_equity = a["--stop-out"] == "none" ? -std::numeric_limits<double>::infinity()
                                                        : to_double("--stop-out", a["--stop-out"]);
 
+        const auto bars = bt::load_bars_csv(a["--data"]);
         const double units = to_double("--units", a["--units"]);
         std::unique_ptr<bt::Strategy> strategy;
-        if (a["--strategy"] == "ma")
+        if (a["--strategy"] == "ma") {
             strategy = std::make_unique<bt::MovingAverageCrossover>(std::stoul(a["--short"]), std::stoul(a["--long"]), units);
-        else if (a["--strategy"] == "buyhold") strategy = std::make_unique<bt::BuyAndHold>(units);
-        else if (a["--strategy"] == "none") strategy = std::make_unique<bt::NoTrade>();
-        else throw std::invalid_argument("unknown strategy: " + a["--strategy"]);
+        } else if (a["--strategy"] == "buyhold") {
+            strategy = std::make_unique<bt::BuyAndHold>(units);
+        } else if (a["--strategy"] == "none") {
+            strategy = std::make_unique<bt::NoTrade>();
+        } else if (a["--strategy"] == "file") {
+            if (!a.count("--targets")) throw std::invalid_argument("--strategy file needs --targets FILE");
+            auto targets = bt::load_targets_csv(a["--targets"]);
+            bt::check_targets_match_bars(bars, targets);
+            strategy = std::make_unique<bt::TargetSeries>(std::move(targets));
+        } else {
+            throw std::invalid_argument("unknown strategy: " + a["--strategy"]);
+        }
 
-        const auto bars = bt::load_bars_csv(a["--data"]);
         const auto result = bt::run_backtest(bars, *strategy, cfg);
         const auto metrics = bt::compute_metrics(result);
 
@@ -85,6 +95,7 @@ int main(int argc, char** argv) {
             {"long", a["--long"]},       {"units", a["--units"]},        {"basis", a["--basis"]},
             {"spread", a["--spread"]},   {"slippage", a["--slippage"]},  {"commission_per_unit", a["--commission-per-unit"]},
             {"commission_rate", a["--commission-rate"]}, {"stop_out_level", a["--stop-out"]},
+            {"targets", a.count("--targets") ? a["--targets"] : std::string()},
             {"start", result.equity.empty() ? "" : bt::format_timestamp(result.equity.front().timestamp)},
             {"end", result.equity.empty() ? "" : bt::format_timestamp(result.equity.back().timestamp)}};
         const std::string json = bt::metrics_json(metrics, extra);

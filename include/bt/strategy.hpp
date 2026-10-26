@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "bt/types.hpp"
 
@@ -76,5 +77,23 @@ class NoTrade : public Strategy {
 public:
     double target_position(const History&) override { return 0.0; }
 };
+
+// Replays target positions computed outside the engine (for example by a Python model), matched to bars by
+// timestamp. The engine still owns execution, so a target written for bar t's close is traded at bar t+1's
+// open with the usual costs; the model never chooses its own fill price. Bars without an entry are flat.
+class TargetSeries : public Strategy {
+public:
+    explicit TargetSeries(std::vector<TimedTarget> targets);  // timestamps strictly increasing
+    double target_position(const History& history) override;
+    void reset() override { next_ = 0; }
+
+private:
+    std::vector<TimedTarget> targets_;
+    std::size_t next_ = 0;
+};
+
+// Throws std::runtime_error naming the first target whose timestamp is not one of the bars, so a file built
+// for different data (another time zone, another bar size) cannot be silently half-applied.
+void check_targets_match_bars(const std::vector<Bar>& bars, const std::vector<TimedTarget>& targets);
 
 }  // namespace bt

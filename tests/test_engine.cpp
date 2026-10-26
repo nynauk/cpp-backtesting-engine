@@ -237,6 +237,44 @@ TEST(Engine, StopOutCanBeSwitchedOff) {
     EXPECT_THROW(bt::run_backtest(bars, hold, cfg), std::invalid_argument);
 }
 
+TEST(Engine, TargetFileMatchesTheSameTargetsScriptedInCode) {
+    // The hand-calculated portfolio again, but with its targets supplied as timestamped rows.
+    const std::vector<bt::Bar> bars = {bar(0, 1.1000, 1.1010), bar(1, 1.1010, 1.1030), bar(2, 1.1030, 1.1020),
+                                       bar(3, 1.1020, 1.1000), bar(4, 1.1000, 1.0980)};
+    const double targets[5] = {1000, 1000, 0, -1000, -1000};
+    std::vector<bt::TimedTarget> rows;
+    for (std::size_t i = 0; i < 5; ++i) rows.push_back({bars[i].timestamp, targets[i]});
+    bt::EngineConfig cfg;
+    cfg.costs.spread = 0.0002;
+    cfg.costs.commission_per_unit = 0.00001;
+    bt::TargetSeries from_file(rows);
+    Scripted in_code({1000, 1000, 0, -1000, -1000});
+    const auto a = bt::run_backtest(bars, from_file, cfg);
+    const auto b = bt::run_backtest(bars, in_code, cfg);
+    ASSERT_EQ(a.fills.size(), b.fills.size());
+    for (std::size_t i = 0; i < a.equity.size(); ++i) EXPECT_DOUBLE_EQ(a.equity[i].equity, b.equity[i].equity);
+    EXPECT_NEAR(a.equity.back().equity, 100002.67, 1e-8);
+}
+
+TEST(Engine, TargetFileRowsApplyOnlyToTheirOwnBar) {
+    // Rows for bars 1 and 3 only. Bar 2 has no row, so the position must go flat at bar 3's open, not carry on.
+    std::vector<bt::Bar> bars;
+    for (int i = 0; i < 6; ++i) bars.push_back(bar(i, 1.0 + 0.01 * i, 1.005 + 0.01 * i));
+    bt::TargetSeries s({{bars[1].timestamp, 500.0}, {bars[3].timestamp, -500.0}});
+    const auto r = bt::run_backtest(bars, s, bt::EngineConfig{});
+    const double expected_position[6] = {0, 0, 500, 0, -500, 0};
+    for (std::size_t i = 0; i < 6; ++i) EXPECT_DOUBLE_EQ(r.equity[i].position, expected_position[i]) << "bar " << i;
+}
+
+TEST(Engine, TargetFileMustMatchTheBars) {
+    const auto bars = random_walk(10, 21);
+    EXPECT_NO_THROW(bt::check_targets_match_bars(bars, {{bars[2].timestamp, 1.0}, {bars[7].timestamp, -1.0}}));
+    EXPECT_THROW(bt::check_targets_match_bars(bars, {{bars[2].timestamp + 60, 1.0}}), std::runtime_error);
+    EXPECT_THROW(bt::check_targets_match_bars(bars, {{bars[9].timestamp + 3600, 1.0}}), std::runtime_error);
+    EXPECT_THROW(bt::TargetSeries({{bars[3].timestamp, 1.0}, {bars[2].timestamp, 1.0}}), std::invalid_argument);
+    EXPECT_THROW(bt::TargetSeries({{bars[3].timestamp, std::nan("")}}), std::invalid_argument);
+}
+
 TEST(Engine, BarsAfterTheWindowEndAreNeverShownToTheStrategy) {
     const auto bars = random_walk(50, 13);
     Peeking s;

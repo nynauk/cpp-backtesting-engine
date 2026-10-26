@@ -284,4 +284,67 @@ std::vector<Bar> load_bars_csv(const std::string& path) {
     return parse_stream(f, path, size > 0 ? static_cast<std::size_t>(size) : 0);
 }
 
+std::vector<TimedTarget> parse_targets_csv(std::istream& in, const std::string& source_name) {
+    std::string line;
+    std::size_t line_no = 0;
+    auto error = [&](const std::string& message) {
+        return std::runtime_error(source_name + " line " + std::to_string(line_no) + ": " + message);
+    };
+    auto strip = [](std::string_view s) {
+        if (!s.empty() && s.back() == '\r') s.remove_suffix(1);
+        return s;
+    };
+
+    if (!std::getline(in, line)) throw std::runtime_error(source_name + ": file is empty");
+    ++line_no;
+    std::string_view header = strip(line);
+    if (header.size() >= 3 && static_cast<unsigned char>(header[0]) == 0xEF && static_cast<unsigned char>(header[1]) == 0xBB &&
+        static_cast<unsigned char>(header[2]) == 0xBF)
+        header.remove_prefix(3);
+    std::vector<std::string_view> fields;
+    split_csv_line(header, fields);
+    int ts_col = -1, target_col = -1;
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        const std::string name = lower(trim(fields[i]));
+        if (name == "timestamp" || name == "time" || name == "datetime") ts_col = static_cast<int>(i);
+        else if (name == "target") target_col = static_cast<int>(i);
+    }
+    std::string missing;
+    if (ts_col < 0) missing = "timestamp";
+    if (target_col < 0) missing += (missing.empty() ? "" : ", ") + std::string("target");
+    if (!missing.empty()) throw std::runtime_error(source_name + ": missing column(s): " + missing);
+    const auto needed = static_cast<std::size_t>(std::max(ts_col, target_col)) + 1;
+
+    std::vector<TimedTarget> out;
+    while (std::getline(in, line)) {
+        ++line_no;
+        const std::string_view row = strip(line);
+        if (trim(row).empty()) continue;
+        split_csv_line(row, fields);
+        if (fields.size() < needed) throw error("expected at least " + std::to_string(needed) + " fields");
+        TimedTarget t;
+        try {
+            t.timestamp = parse_timestamp_view(fields[static_cast<std::size_t>(ts_col)]);
+        } catch (const std::runtime_error& e) {
+            throw error(e.what());
+        }
+        const std::string_view value = trim(fields[static_cast<std::size_t>(target_col)]);
+        if (!parse_double(value, t.target)) throw error("cannot parse target '" + std::string(value) + "'");
+        if (!std::isfinite(t.target)) throw error("non-finite target");
+        if (!out.empty()) {
+            if (t.timestamp == out.back().timestamp) throw error("duplicate timestamp " + format_timestamp(t.timestamp));
+            if (t.timestamp < out.back().timestamp) throw error("timestamps are not in chronological order");
+        }
+        out.push_back(t);
+    }
+    if (out.empty()) throw std::runtime_error(source_name + ": no target rows");
+    return out;
+}
+
+std::vector<TimedTarget> load_targets_csv(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("cannot open " + path);
+    return parse_targets_csv(f, path);
+}
+
 }  // namespace bt

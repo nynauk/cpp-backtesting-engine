@@ -114,6 +114,30 @@ TEST(Csv, HandlesByteOrderMarkBlankLinesAndNoFinalNewline) {
     EXPECT_NE(error_of("timestamp,open,high,low,close\n\n2024-01-01,1,x,1,1\n").find("line 3"), std::string::npos);
 }
 
+TEST(TargetsCsv, ParsesAndValidatesTargetFiles) {
+    std::istringstream good("model,target,timestamp\r\nlogit,1.5,2024-01-01 01:00:00\r\nlogit,-2,2024-01-01 02:00:00\r\n");
+    const auto rows = bt::parse_targets_csv(good, "t.csv");
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_DOUBLE_EQ(rows[0].target, 1.5);
+    EXPECT_EQ(rows[1].timestamp - rows[0].timestamp, 3600);
+
+    auto error = [](const std::string& text) {
+        std::istringstream in(text);
+        try {
+            bt::parse_targets_csv(in, "t.csv");
+        } catch (const std::runtime_error& e) {
+            return std::string(e.what());
+        }
+        return std::string();
+    };
+    EXPECT_NE(error("timestamp,position\n2024-01-01,1\n").find("missing column(s): target"), std::string::npos);
+    EXPECT_NE(error("timestamp,target\n2024-01-01,1\n2024-01-01,1\n").find("duplicate"), std::string::npos);
+    EXPECT_NE(error("timestamp,target\n2024-01-02,1\n2024-01-01,1\n").find("chronological"), std::string::npos);
+    EXPECT_NE(error("timestamp,target\n2024-01-01,inf\n").find("non-finite"), std::string::npos);
+    EXPECT_NE(error("timestamp,target\n2024-01-01,up\n").find("cannot parse target"), std::string::npos);
+    EXPECT_NE(error("timestamp,target\n").find("no target rows"), std::string::npos);
+}
+
 TEST(Csv, RejectsEmptyFiles) {
     EXPECT_NE(error_of("").find("empty"), std::string::npos);
     EXPECT_NE(error_of("timestamp,open,high,low,close\n").find("no data rows"), std::string::npos);

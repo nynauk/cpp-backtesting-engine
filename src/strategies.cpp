@@ -1,6 +1,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "bt/csv.hpp"
 #include "bt/strategy.hpp"
 
 namespace bt {
@@ -45,6 +46,31 @@ double MovingAverageCrossover::target_position(const History& bars) {
     if (short_ma - long_ma > tolerance) last_target_ = units_;
     else if (long_ma - short_ma > tolerance) last_target_ = -units_;
     return last_target_;
+}
+
+TargetSeries::TargetSeries(std::vector<TimedTarget> targets) : targets_(std::move(targets)) {
+    for (std::size_t i = 0; i < targets_.size(); ++i) {
+        if (!std::isfinite(targets_[i].target)) throw std::invalid_argument("target positions must be finite");
+        if (i > 0 && targets_[i].timestamp <= targets_[i - 1].timestamp)
+            throw std::invalid_argument("target timestamps must be strictly increasing");
+    }
+}
+
+double TargetSeries::target_position(const History& history) {
+    // Bars arrive in time order, so one forward-moving cursor finds each bar's entry.
+    const std::int64_t now = history.back().timestamp;
+    while (next_ < targets_.size() && targets_[next_].timestamp < now) ++next_;
+    if (next_ < targets_.size() && targets_[next_].timestamp == now) return targets_[next_++].target;
+    return 0.0;
+}
+
+void check_targets_match_bars(const std::vector<Bar>& bars, const std::vector<TimedTarget>& targets) {
+    std::size_t b = 0;
+    for (const auto& t : targets) {
+        while (b < bars.size() && bars[b].timestamp < t.timestamp) ++b;
+        if (b == bars.size() || bars[b].timestamp != t.timestamp)
+            throw std::runtime_error("target at " + format_timestamp(t.timestamp) + " has no matching bar");
+    }
 }
 
 }  // namespace bt

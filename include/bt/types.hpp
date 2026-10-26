@@ -28,4 +28,10 @@ struct Fill {
 
 inline double signed_quantity(const Fill& f) { return f.side == Side::Buy ? f.quantity : -f.quantity; }
 
+// A target position decided at the close of the bar with this timestamp, e.g. by a model trained elsewhere.
+struct TimedTarget {
+    std::int64_t timestamp = 0;
+    double target = 0.0;
+};
+
 }  // namespace bt
