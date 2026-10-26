@@ -1,0 +1,18 @@
+{
+  "rule": "highest validation-period Sharpe (P&L-based, zero risk-free rate) at baseline costs",
+  "selected": {
+    "short": 50,
+    "long": 150
+  },
+  "validation_sharpe": 0.4471858155,
+  "development_sharpe": -0.2720336032,
+  "candidates": 24,
+  "validation_sharpe_rank_correlation_with_development": 0.013043478260869565,
+  "pairs_with_positive_validation_sharpe": 5,
+  "pairs_with_positive_development_sharpe": 2,
+  "luck_yardstick": {
+    "expected_best_of_n_sharpe_if_no_edge_and_independent": 0.8714379525711538,
+    "note": "E[max of n standard normals] / sqrt(years): the Sharpe a best-of-n pick reaches by luck alone; correlated variants lower it."
+  },
+  "written_at_utc": "2026-10-26T22:45:50+00:00"
+}
