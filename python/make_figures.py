@@ -277,8 +277,6 @@ def main() -> None:
         cost_figure(report, theme, mode)
         grid_figure(report, theme, mode)
         test_figure(report, theme, mode)
-        if "D_runtime" in report:
-            runtime_figure(report, theme, mode)
     print("wrote figures to", FIGURES)
 
 

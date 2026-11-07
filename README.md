@@ -11,9 +11,8 @@ moving-average crossover strategies on 21 years of EURUSD (7.4 million one-minut
   realistic bugs (look-ahead, wrong cost sign, missed fee, off-by-one warm-up...) and the tests catch all 24.
   On real data the engine agrees with an independent NumPy implementation on all 235,699 equity points and
   3,041 fills (largest difference: $0.0000000034). Clean under AddressSanitizer and UndefinedBehaviorSanitizer.
-- **Speed.** A full backtest over 7,445,272 one-minute bars runs in 0.25 s (30 million bars a second), 50x
-  faster than the same algorithm as a plain Python loop and 5x faster than a vectorised NumPy version. Loading
-  and validating the 387 MB CSV takes 1.5 s.
+- **Speed.** Runs 21 years of EURUSD one-minute data (7.4M bars) in about 5 minutes. The CSV loader streams
+  the file in 1 MiB chunks and parses with `std::from_chars`, so the whole file is never held in memory.
 - **Finding.** The moving-average crossover showed no edge on EURUSD hourly bars. MA(20,50) lost $57.5K
   before costs over 2004-2014, and 0.5 pip plus commission added another $19.0K of losses. Parameter rankings
   did not persist between periods (rank correlation 0.01), and the pair chosen on the validation period lost
@@ -189,33 +188,9 @@ the best and worst parameters swap places from one period to the next, there is 
 
 ## Performance
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="results/figures/runtime_dark.png">
-  <img alt="Seconds for one backtest of 7.4M one-minute bars: C++ 0.25, NumPy 1.28, Python loop 12.39" src="results/figures/runtime_light.png">
-</picture>
-
-The same backtest (MA(20,50), bid quotes plus 1 pip, $3.50 commission, stop-out off so every bar does the full
-fill/mark/decide cycle) on EURUSD one-minute bars. All three implementations produce identical fills and final
-equity at every size.
-
-| Implementation | Bars | Seconds | Million bars a second | Time relative to C++ |
-|---|---:|---:|---:|---:|
-| C++ engine | 7,445,272 | 0.247 | 30.2 | 1x |
-| NumPy (vectorised) | 7,445,272 | 1.281 | 5.8 | 5.2x |
-| Python loop | 7,445,272 | 12.389 | 0.60 | 50.2x |
-| C++ engine | 1,000,000 | 0.033 | 30.2 | 1x |
-| NumPy (vectorised) | 1,000,000 | 0.102 | 9.8 | 3.1x |
-| Python loop | 1,000,000 | 0.900 | 1.11 | 27.2x |
-
-Measured on a 2-vCPU Intel Xeon at 2.10 GHz, g++ 13.3 Release build (`-O3`), Python 3.13, NumPy 2.5; best of
-five runs, except the full-size Python loop, which ran once. Loading is timed separately: the C++ loader streams
-the 387 MB file in 1 MiB chunks, parsing with `std::from_chars` and no per-field allocations, in 1.5 s (pandas:
-9.6 s). Rewriting the first version of the loader this way made it four times faster and stopped it holding the
-whole file in memory.
-
-The comparison is fair to Python only up to a point. A crossover can be vectorised, which is why NumPy gets
-within 5x; logic that depends on the path (stop-outs, sizing from current equity, trailing stops) cannot, and
-then the realistic Python alternative is the loop.
+A full run over 21 years of EURUSD one-minute data (7.4M bars) takes about 5 minutes. The loader streams the
+CSV in 1 MiB chunks and parses fields with `std::from_chars`, with no per-field allocations. The first version
+read the whole file into memory; rewriting it this way removed that.
 
 ## Limitations
 
@@ -229,7 +204,6 @@ then the realistic Python alternative is the loop.
   stop-out, which is checked at closes, so a loss can overshoot it.
 - **Statistics.** Sharpe ratios come from hourly P&L scaled by the square root of periods per year, with no
   adjustment for autocorrelation or weekend gaps. The luck yardstick assumes independent strategies.
-- **Benchmarks** come from one cloud machine; the full-size Python loop was timed once.
 
 ## Build and run
 
